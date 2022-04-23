@@ -1,16 +1,4 @@
-"""
 
-Frenet optimal trajectory generator
-
-author: Atsushi Sakai (@Atsushi_twi)
-
-Ref:
-
-- [Optimal Trajectory Generation for Dynamic Street Scenarios in a Frenet Frame](https://www.researchgate.net/profile/Moritz_Werling/publication/224156269_Optimal_Trajectory_Generation_for_Dynamic_Street_Scenarios_in_a_Frenet_Frame/links/54f749df0cf210398e9277af.pdf)
-
-- [Optimal trajectory generation for dynamic street scenarios in a Frenet Frame](https://www.youtube.com/watch?v=Cj6tAQe7UCY)
-
-"""
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,6 +6,13 @@ import copy
 import math
 import cubic_spline_planner
 import circ
+import torch 
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
+from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
+import time 
+import random
 
 SIM_LOOP = 500
 
@@ -42,6 +37,70 @@ KLAT = 1.0
 KLON = 1.0*5
 
 show_animation = True
+
+
+ 
+
+
+edge_index = torch.tensor([[0, 10],
+                           [10, 0],
+
+                           [1, 10],
+                           [10, 1] ,
+
+                           [2 , 11] , 
+                           [11, 2] , 
+
+                           [3 , 11] , 
+                           [11 , 3] , 
+
+                           [4 , 12] , 
+                           [12 , 4] ,
+
+                           [5,12],
+                           [12,5],
+
+                           [6,13],
+                           [13,6],
+
+                           [7 , 13],
+                           [13 , 7],
+
+                           [8,14],
+                           [14,8],
+
+                           [9 ,14],
+                           [14,8],
+
+                           [10,15],
+                           [15,10],
+
+                           [15,11],
+                           [11,15],
+
+                           [12,16],
+                           [16,12],
+
+                           [13,16],
+                           [16,13],
+
+                           [14,16],
+                           [16,14]
+
+                            ] , dtype=torch.long)
+
+edge_index = torch.transpose( edge_index ,  0 , 1)
+
+
+train_mask = torch.tensor( [ False, False , False, False,False,False,False,False,False,False,False,False,False,False,False,False,False ] )
+
+test_mask = torch.tensor( [ True, True , True, True,True,True,True,True,True,True,True,True,True,True,True,True,True ] )
+
+
+
+
+
+
 
 def vec_angl(x,y):
     x1=x[0]
@@ -378,6 +437,7 @@ def PerformNBP(   GMMs ):
 
                     inv_sum2 = (inv_var_star)+ ( 1/ GMMs[j][2+i] )
                     mean_temp2 =  inv_sum2*( (inv_var_star*mean_star) +  ( inv_sum2*GMMs[j][i] ) )
+                    x = mean_temp2
 
                     # print(  GetGaussian( mean_temp2 , mean_temp2 , (1/inv_sum2) )  )
 
@@ -413,13 +473,19 @@ def PerformNBP(   GMMs ):
 
                 x = np.random.normal(xt[i],  1.0, 1)[0]
                 means.append(x)
-                var_vals.append(1)
-                weights.append(0.33)
 
-            print( means )
-            print(var_vals)
-            print(weights)
-            print("************")
+                if( x > 2 ):
+                    var_vals.append(0.1)
+                    weights.append(0.15)
+
+                if( x < 2 and x > 1.5 ):
+                    var_vals.append(0.35)
+                    weights.append(0.25)
+
+                if( x<= 1.5 ):
+                    var_vals.append(0.5)
+                    weights.append(0.6)
+
             return means , var_vals,  weights 
 
 
@@ -436,30 +502,227 @@ def GetGMMs( Xpts , Ypts  , obs ):
     numPts = np.shape(Xpts)[0]
     numTrajs = np.shape(Xpts)[1]
 
+    IndexList1 = []
+    IndexList2 = []
+
+    DistanceList = []
+    print("*********START************")
+
     for i in range( numTrajs ):
+        min_dist = [] 
+        Traj_dist = [] 
+
+        print("*********START FOR ONE TRAJECTORY ************")
+
+
         for j in range( numPts ):
 
-        
-
+            FirstNBP = []
             for o in range( len( obs )):
 
                 Pt = np.array( [ Xpts[j][i] , Ypts[j][i] ] )
                 distance = np.linalg.norm( Pt - obs[o])
-
+                min_dist.append(distance)
 
                 if( distance < 2 ):
 
                     dist = [ distance -0.2 , distance , distance+0.2 , (0.7)**2 , (0.8)**2 , (0.9)**2  ]
-                    GMMS_dist.append( dist )
+                    FirstNBP.append(dist)
 
-    return GMMS_dist
+            
+            if(len(FirstNBP) > 0):
+                means, var, weights = PerformNBP(FirstNBP )
+                dist2 = [means[0] , means[1] , means[2] , var[0] , var[1] , var[2] ]
+                Traj_dist.append( dist2 )
+
+            # if( len(FirstNBP ) == 1):
+
+            # if( len(FirstNBP) ==  0 ):
+            #     Traj_dist.append( FirstNBP[0] )
+
+        if( len(Traj_dist) > 1 ):
+
+            print(" SHape of Traj distribution " + str( len(Traj_dist) ) ) 
+            GMMS_dist.append(Traj_dist)
+
+        print("*********END FOR ONE TRAJECTORY ************")
+
+        DistanceList.append(np.amin(  min_dist ) )
 
 
-def CheckCollisionGNN( paths , obs ):
+    for i in range( 0 , numTrajs , 2 ):
+
+        if( DistanceList[i] < DistanceList[i+1] ):
+            IndexList1.append(i)
+        else:
+            IndexList1.append(i+1)
+
+
+    if( DistanceList[ IndexList1[0] ] <  DistanceList[ IndexList1[1] ] ):
+        IndexList2.append( IndexList1[0]  )
+    else:
+        IndexList2.append( IndexList1[1]  )
+
+    index  =np.argmin( [DistanceList[4] ,  DistanceList[5] , DistanceList[6] ,DistanceList[7], DistanceList[8] , DistanceList[9] ] )
+    IndexList2.append( 4+ index)
+
+
+    print( np.shape(GMMS_dist))
+
+    print("***********END****")
+
+
+    return GMMS_dist , IndexList1 , IndexList2
+
+
+
+
+def GetGMMs2( Xpts , Ypts  , obs ):
+
+    ## the function must return a list of lists of shape ( numTraj , <=NumPts, 6 )  
+
+    GMMS_dist = []
+    numPts = np.shape(Xpts)[0]
+    numTrajs = np.shape(Xpts)[1]
+
+    GMMParams = np.ones( ( numTrajs , numPts , 6 ) )*-10
+
+    Colliding = False
+
+    DistanceList = []
+
+    IndexList1  = []
+    IndexList2 = [] 
+
+
+
+    for i in range(numTrajs):
+
+        min_dist = []
+
+        Pt2TrajDataCollect = [] 
+
+        for j in range(numPts):
+
+            Obs2PtDataCollect = []
+
+            for o in range(len( obs )):
+
+                Pt = np.array( [ Xpts[j][i] , Ypts[j][i] ] )
+                distance = np.linalg.norm( Pt - obs[o]) - 1.5
+                min_dist.append(distance)
+
+                if( distance < 2):
+
+                    dist = [ distance -0.2 , distance , distance+0.2 , (0.7)**2 , (0.8)**2 , (0.9)**2  ]
+                    Obs2PtDataCollect.append(dist)
+                    Colliding = True 
+
+            
+            if len(Obs2PtDataCollect) >  1  :
+
+                means, var, weights = PerformNBP(Obs2PtDataCollect )  ### NBP between the obstacles and a point on the trajectory 
+                dist2 = [means[0] , means[1] , means[2] , var[0] , var[1] , var[2] ]
+                Pt2TrajDataCollect.append(dist2)
+                GMMParams[i][j] = np.asarray(dist2)
+
+                # print(GMMParams[i][j] )
+
+            if(len(Obs2PtDataCollect) == 1 ):
+
+                GMMParams[i][j] = np.asarray(Obs2PtDataCollect[0])
+
+
+        DistanceList.append(np.amin(  np.asarray(min_dist) ) )
+
+
+
+    for i in range( 0 , numTrajs , 2 ):
+
+        if( DistanceList[i] < DistanceList[i+1] ):
+            IndexList1.append(i)
+        else:
+            IndexList1.append(i+1)
+
+
+    if( DistanceList[ IndexList1[0] ] <  DistanceList[ IndexList1[1] ] ):
+        IndexList2.append( IndexList1[0]  )
+    else:
+        IndexList2.append( IndexList1[1]  )
+
+    index  =np.argmin( [DistanceList[4] ,  DistanceList[5] , DistanceList[6] ,DistanceList[7], DistanceList[8] , DistanceList[9] ] )
+    IndexList2.append( 4+ index)
+
+
+    return GMMParams , Colliding , IndexList1 , IndexList2
+
+
+
+def GetFeatures( PathParams  ):
+
+
+    data1 = np.random.normal(PathParams[0], PathParams[3], 7)
+    data2 = np.random.normal(PathParams[1], PathParams[4], 8)
+    data3 = np.random.normal(PathParams[2], PathParams[5], 5)
+
+
+    Features = np.zeros( ( 20 , 1))
+    Features[0:7 , 0] = data1
+    Features[7:15 , 0] = data2
+    Features[15:20 , 0] = data3
+
+    Features = np.reshape(Features, (20,))
+
+    return Features
+
+
+
+def PlotPredictions( obs, Xpts , Ypts , preds  ):
+
+    figure, axes = plt.subplots()
+
+    Drawing_colored_circle = plt.Circle(( 1.5 , 0.8 ), 1 )
+
+    plt.xlim([0, 140])
+    plt.ylim([-20, 20])
+
+
+    # axes.add_patch( Drawing_colored_circle )
+
+    for i in range( len(obs) ):
+        Drawing_colored_circle = plt.Circle(( obs[i][0] , obs[i][1] ), 1.5 )
+        axes.add_artist( Drawing_colored_circle )
+
+    for i in range( 10 ): ## 10 trajectories
+        X = []
+        Y = []
+        for j in range(20): ## each with 20 pts 
+
+            X.append(Xpts[j][i])
+            Y.append(Ypts[j][i])
+
+
+        if( preds[i] == 1 ):
+            plt.plot(X, Y , linewidth = 0.5, color='r')
+        else:
+            plt.plot(X, Y , linewidth = 0.5, color='g')
+
+
+    name = random.randint(0, 5000)
+    name = "Plots/"+str(name) + ".png"
+    plt.savefig(name)
+       
+    # plt.show()
+
+
+
+def CheckCollisionGNN( paths , obs  , model):
 
     numPaths = len(paths)
     BatchSize = 10
     numBatches = numPaths/BatchSize 
+
+    Features_Matrix = np.zeros( ( 17 , 20 ) )
 
 
     for i in  range( int(numBatches)):
@@ -479,18 +742,95 @@ def CheckCollisionGNN( paths , obs ):
 
             cnt += 1
 
-        GMMS_dist = GetGMMs(Xpts  , Ypts, obs)
-        PerformNBP( GMMS_dist )
+        GMMS_dist , Colliding  , IndexList1 , IndexList2 = GetGMMs2(Xpts  , Ypts, obs)
+
+        check = np.array([ -10 , -10 , -10 , -10 , -10,-10] )
+
+        TrajCollisionIndex = [] 
+
+
+        if(Colliding):
+
+            for i in range(BatchSize):
+                AllPtParams = [] 
+                CollisionFreeTraj = True
+
+                for j in range( 20 ):
+
+                    if(  GMMS_dist[i][j][0] != -10 ):
+                        AllPtParams.append(GMMS_dist[i][j])
+                        CollisionFreeTraj = False
+
+                if( CollisionFreeTraj == False):
+
+                    if( len(AllPtParams) > 1):
+
+                        PathParams = PerformNBP( AllPtParams  )
+                        # print("---------------")
+                        # print(PathParams)
+                        # print("**********")
+                        PathParams = [ PathParams[0][0] , PathParams[0][1] , PathParams[0][2] , PathParams[1][0] , PathParams[1][0] , PathParams[1][0] ]
+                        PathFeatures = GetFeatures( PathParams )
+                        Features_Matrix[i]= PathFeatures
+
+                    if( len(AllPtParams) == 1 ):
+
+                        PathParams = AllPtParams[0]
+                        PathParams = [ PathParams[0] , PathParams[1] , PathParams[2] , PathParams[3] , PathParams[4] , PathParams[5] ]
+                        PathFeatures = GetFeatures( PathParams )
+                        Features_Matrix[i]= PathFeatures
+
+
+                if(CollisionFreeTraj ):
+
+                    PathParams = [ 5 , 5.5, 6 , 1 ,  1,1  ]
+                    PathFeatures = GetFeatures( PathParams )
+                    Features_Matrix[i]= PathFeatures
+                
+                TrajCollisionIndex.append(CollisionFreeTraj)
+
+
+        if( Colliding == False ):
+
+            for i in range( BatchSize ):
+                TrajCollisionIndex.append(False)
+                PathParams = [ 5 , 5.5, 6 , 1 ,  1,1  ]
+                PathFeatures = GetFeatures( PathParams )
+                Features_Matrix[i]= PathFeatures
+
+
+
+        Features_Matrix[10] = Features_Matrix[ IndexList1[0] ]
+        Features_Matrix[11] = Features_Matrix[ IndexList1[1] ]
+        Features_Matrix[12] = Features_Matrix[ IndexList1[2] ]
+        Features_Matrix[13] = Features_Matrix[ IndexList1[3] ]
+        Features_Matrix[14] = Features_Matrix[ IndexList1[4] ]
+
+
+        Features_Matrix[15] = Features_Matrix[ IndexList2[0] ]
+        Features_Matrix[16] = Features_Matrix[ IndexList2[1] ]
+
+  
+        FeatureMatrix = torch.tensor( Features_Matrix , device='cpu' , dtype=torch.float32 )
+        data = Data(x=FeatureMatrix, edge_index=edge_index , train_mask=train_mask , val_mask= train_mask, test_mask=test_mask )
+        pred = model(data).argmax(dim=1)
+        PlotPredictions( obs, Xpts, Ypts, pred)
+        # print(pred)
 
 
 
 
-
-
-def check_paths(fplist, ob, ob_v):
+def check_paths(fplist, ob, ob_v , model):
 
     okind = []
-    CheckCollisionGNN( fplist  , ob   )
+    start = time.time()
+    CheckCollisionGNN( fplist  , ob  ,model )
+    end = time.time()
+
+    # print( "time" + str(end -start ))
+
+    start = time.time()
+
     for i, _ in enumerate(fplist):
         if any([v > MAX_SPEED for v in fplist[i].s_d]):  # Max speed check
             continue
@@ -504,17 +844,21 @@ def check_paths(fplist, ob, ob_v):
                 continue
 
         okind.append(i)
+    end = time.time()
+    print( "time" + str(end -start) )
+
+
 
     return [fplist[i] for i in okind]
 
 
-def frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, ob,ob_v, prev_vec):
+def frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, ob,ob_v, prev_vec , model):
 
     fplist = calc_frenet_paths(c_speed, c_d, c_d_d, c_d_dd, s0)
     #print(len(fplist))
     fplist = calc_global_paths(fplist, csp,prev_vec)
     #print(len(fplist))
-    fplist = check_paths(fplist, ob, ob_v)
+    fplist = check_paths(fplist, ob, ob_v , model)
     #print(len(fplist))
     # find minimum cost path
     mincost = float("inf")

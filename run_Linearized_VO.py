@@ -2,7 +2,11 @@
 import numpy as np
 import math
 import draw
-
+import torch 
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
+from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
 from scipy.optimize import minimize
 
 
@@ -86,6 +90,27 @@ prev_rel_p = obs_p-agent_p
 counter = 1.
 save=0
 #%% Start of simulation
+
+
+class GCN(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = GCNConv(20, 16)
+        self.conv2 = GCNConv(16, 2)
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, training=self.training)
+        x = self.conv2(x, edge_index)
+
+        return F.log_softmax(x, dim=1)
+
+model = torch.load('collision_detection_Batch_GNN.pt')
+model.eval()  
+
+
 while np.linalg.norm((agent_p-goal_p)) > 0.2:
     current_head = current_head+np.dot(agent_v[1], dt)
     #%updating our current heading
@@ -147,7 +172,7 @@ while np.linalg.norm((agent_p-goal_p)) > 0.2:
     ob=np.hstack((xob,yob))
     ob_v=np.hstack((xobdot,yobdot))
 
-    path = frenet_optimal_trajectory.frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, obs_p,obs_v,prev_vec)
+    path = frenet_optimal_trajectory.frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, obs_p,obs_v,prev_vec , model)
 
     s0 = path.s[1]
     c_d = path.d[1]
