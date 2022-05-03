@@ -2,6 +2,10 @@
 
 This work explors the use of a GNN to perform collision prediction of trajectories. 
 
+
+### Simulation Results 
+
+
 The simulation can be run using the following command 
 
 ```
@@ -19,3 +23,12 @@ The resulting simulation would appear as shown below
 
 ![](https://github.com/sudarshan-s-harithas/GNN-for-Collision-Prediction/blob/main/Images/TDL_project2.gif)
 
+
+
+### Train model from scratch 
+
+The data that is required for trainning is provided as a part of this code repository, please run the command below to train the model from scratch. 
+
+```
+python3 TrainCollisionModel.py
+```
