@@ -4,7 +4,9 @@ import matplotlib
 matplotlib.use('Agg')
 
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, writers
+# from matplotlib.animation import FuncAnimation, writers
+from matplotlib.animation import FuncAnimation, PillowWriter 
+
 from mpl_toolkits.mplot3d import Axes3D
 import numpy as np
 import subprocess as sp
@@ -76,7 +78,7 @@ def render_animation(keypoints, poses, skeleton, fps, bitrate, azim, output, vie
         ax.set_xlim3d([-radius / 2, radius / 2])
         ax.set_zlim3d([0, radius])
         ax.set_ylim3d([-radius / 2, radius / 2])
-        ax.set_aspect('equal')
+        ax.set_aspect('auto')
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         ax.set_zticklabels([])

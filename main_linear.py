@@ -165,14 +165,14 @@ def main(args):
         print('\nEpoch: %d | LR: %.8f' % (epoch + 1, lr_now))
 
         # Train for one epoch
-        epoch_loss, lr_now, glob_step = train(train_loader, model_pos, criterion, optimizer, device, args.lr, lr_now,
+        epoch_loss, epoch_loss2d, lr_now, glob_step = train(train_loader, model_pos, criterion, optimizer, device, args.lr, lr_now,
                                               glob_step, args.lr_decay, args.lr_gamma, max_norm=args.max_norm)
 
         # Evaluate
         error_eval_p1, error_eval_p2 = evaluate(valid_loader, model_pos, device)
 
         # Update log file
-        logger.append([epoch + 1, lr_now, epoch_loss, error_eval_p1, error_eval_p2])
+        logger.append([epoch + 1, lr_now, epoch_loss, epoch_loss2d , error_eval_p1, error_eval_p2])
 
         # Save checkpoint
         if error_best is None or error_best > error_eval_p1:
@@ -191,15 +191,108 @@ def main(args):
     return
 
 
+def DLT( Pts2D, Pts3D ):
+
+
+    def getax( image_pt , world_pt ):
+
+        Ax = np.array( [  -world_pt[0] , -world_pt[1] , -world_pt[2] , -1 ,
+                   0 , 0 , 0 , 0 , 
+                  image_pt[0]*world_pt[0] , image_pt[0]*world_pt[1] , image_pt[0]*world_pt[2] , image_pt[0] ] )
+
+        return Ax
+
+    def getay( image_pt , world_pt ):
+        Ay = np.array( [ 0 ,0 ,0 ,0 , 
+                    -world_pt[0] , -world_pt[1] , -world_pt[2] , -1 , 
+                 image_pt[1]*world_pt[0] , image_pt[1]*world_pt[1] , image_pt[1]*world_pt[2] , image_pt[1]  ])
+
+        return Ay
+
+
+    def ComputeM(image_points , world_3d_points  ):
+
+        numPts = np.shape( world_3d_points)[0]
+        row_num = 0 
+        M = np.zeros( ( 2*numPts , 12  ) )
+
+        for i in range( numPts):
+            Ax = getax( image_points[i] , world_3d_points[i] )
+            M[row_num, : ] = Ax
+            row_num +=1
+            Ay = getay( image_points[i] , world_3d_points[i]  )
+            M[row_num, : ] = Ay
+            row_num +=1
+        return M
+
+    Pts2D = Pts2D.detach().cpu().numpy() 
+    Pts3D = Pts3D.detach().cpu().numpy() 
+
+
+    M = ComputeM(Pts2D , Pts3D  )
+    u, s, vt = np.linalg.svd(M)
+    vt = vt.T
+    P =  vt[: , 11] 
+    P = np.reshape( P , ( 3,4) )
+
+    P = P/P[-1, -1]
+
+    done = True
+
+
+    return P
+
+def GetTransormationPts( All3Dpts, All2DPts):
+
+    a1,b1,c1 = All3Dpts.size()
+    a2,b2,c2 = All2DPts.size()
+
+
+
+    Pts3D = torch.ones( ( (a1*b1) , 4) , dtype=torch.double).type_as(All3Dpts)
+    Pts2D =  torch.ones( (a2*b2-a2 , 3) , dtype=torch.double).type_as(All3Dpts)
+
+    temp = torch.reshape( All3Dpts , ( (a1*b1) , 3)   )
+    temp = temp[0:(a1*b1) , :]
+    Pts3D[:, 0:3] = temp
+
+
+    a,b,c = All2DPts.size()
+
+    temp2 = torch.reshape( All2DPts , (a2*b2 , 2)   )
+    temp = temp2[0:(a2*b2)-a2 , :]
+    Pts2D[:, 0:2] = temp
+
+
+    return Pts3D , Pts2D
+
+
+
+def GetProjections( P , outputs_3d):
+
+    Pts = (outputs_3d.T).type_as(outputs_3d)
+    P = torch.tensor(P)
+    P = (P).type_as(outputs_3d) 
+
+    projections = P@Pts 
+
+    return projections
+
+
+
 def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now, step, decay, gamma, max_norm=True):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     epoch_loss_3d_pos = AverageMeter()
+    epoch_loss_2d_pos = AverageMeter()
+
 
     # Switch to train mode
     torch.set_grad_enabled(True)
     model_pos.train()
     end = time.time()
+
+    W = torch.tensor( torch.rand( 3 , 4 ) , dtype=torch.float32, requires_grad=True).cuda()
 
     bar = Bar('Train', max=len(data_loader))
     for i, (targets_3d, inputs_2d, _) in enumerate(data_loader):
@@ -214,27 +307,56 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
         targets_3d, inputs_2d = targets_3d[:, 1:, :].to(device), inputs_2d.to(device)  # Remove hip joint for 3D poses
         outputs_3d = model_pos(inputs_2d.view(num_poses, -1)).view(num_poses, -1, 3)
 
+        targets_3d_reshaped, inputs_2d_reshaped = GetTransormationPts( targets_3d, inputs_2d)
+        # P = DLT( targets_3d_reshaped , inputs_2d_reshaped)
+
+        P = np.array( [[ 0.36433317, -0.00496474,  0.0179645,  -0.27256447],
+                        [-0.07293952,  0.41734869 , 0.00587739 ,-0.24317693],
+                         [ 0.15458865,  0.00744779  ,0.14326629 , 1 ]])
+
+        outputs_3d_reshaped, inputs_2d_reshaped = GetTransormationPts( outputs_3d, inputs_2d)
+
+        W2 = W.detach().cpu().numpy() +P
+        W2 = W2/W2[-1, -1]
+
+
+        Predicted2Pts = GetProjections( P , outputs_3d_reshaped )
+
+        
+        # Predicted2Pts = W@(Predicted2Pts)
+        Predicted2Pts = Predicted2Pts.T
+
+
         optimizer.zero_grad()
+
         loss_3d_pos = criterion(outputs_3d, targets_3d)
-        loss_3d_pos.backward()
+        loss_2d_pos = criterion(inputs_2d_reshaped, Predicted2Pts)
+
+
+        loss = loss_3d_pos + loss_2d_pos
+        loss.backward()
+
         if max_norm:
             nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
+
         optimizer.step()
 
         epoch_loss_3d_pos.update(loss_3d_pos.item(), num_poses)
+        epoch_loss_2d_pos.update(loss_2d_pos.item(), num_poses)
 
         # Measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
 
         bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
-                     '| Loss: {loss: .4f}' \
+                     '| Loss3d: {loss3d: .4f}'\
+                     '| Loss2d :{loss2d: .4f}'\
             .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
-                    ttl=bar.elapsed_td, eta=bar.eta_td, loss=epoch_loss_3d_pos.avg)
+                    ttl=bar.elapsed_td, eta=bar.eta_td, loss3d=epoch_loss_3d_pos.avg ,  loss2d = epoch_loss_2d_pos.avg )
         bar.next()
 
     bar.finish()
-    return epoch_loss_3d_pos.avg, lr_now, step
+    return epoch_loss_3d_pos.avg, epoch_loss_2d_pos.avg ,  lr_now, step
 
 
 def evaluate(data_loader, model_pos, device):
