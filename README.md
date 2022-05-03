@@ -15,3 +15,7 @@ The results of the prediction would be stored in the folder named *Plots*  the r
 python3 Image2Video.py
 ```
 
+The resulting simulation would appear as shown below 
+
+![](https://github.com/sudarshan-s-harithas/GNN-for-Collision-Prediction/blob/main/Images/TDL_project2.gif)
+
