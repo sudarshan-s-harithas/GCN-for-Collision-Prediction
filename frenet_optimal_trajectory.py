@@ -40,7 +40,7 @@ show_animation = True
 
 
  
-
+figure, axes = plt.subplots()
 
 edge_index = torch.tensor([[0, 10],
                            [10, 0],
@@ -673,13 +673,18 @@ def GetFeatures( PathParams  ):
 
     Features = np.reshape(Features, (20,))
 
+    rsafe = 1
+
+    Features = np.maximum( rsafe - Features , 0 )
+
+
     return Features
 
 
 
-def PlotPredictions( obs, Xpts , Ypts , preds  ):
+def PlotPredictions( obs, Xpts , Ypts , preds , traj_cntr ):
 
-    figure, axes = plt.subplots()
+    # figure, axes = plt.subplots()
 
     Drawing_colored_circle = plt.Circle(( 1.5 , 0.8 ), 1 )
 
@@ -708,7 +713,7 @@ def PlotPredictions( obs, Xpts , Ypts , preds  ):
             plt.plot(X, Y , linewidth = 0.5, color='g')
 
 
-    name = random.randint(0, 5000)
+    name = traj_cntr #random.randint(0, 5000)
     name = "Plots/"+str(name) + ".png"
     plt.savefig(name)
        
@@ -716,13 +721,15 @@ def PlotPredictions( obs, Xpts , Ypts , preds  ):
 
 
 
-def CheckCollisionGNN( paths , obs  , model):
+def CheckCollisionGNN( paths , obs  , model, global_trajectory_cntr):
 
     numPaths = len(paths)
     BatchSize = 10
     numBatches = numPaths/BatchSize 
 
     Features_Matrix = np.zeros( ( 17 , 20 ) )
+
+    traj_cntr = global_trajectory_cntr
 
 
     for i in  range( int(numBatches)):
@@ -814,17 +821,18 @@ def CheckCollisionGNN( paths , obs  , model):
         FeatureMatrix = torch.tensor( Features_Matrix , device='cpu' , dtype=torch.float32 )
         data = Data(x=FeatureMatrix, edge_index=edge_index , train_mask=train_mask , val_mask= train_mask, test_mask=test_mask )
         pred = model(data).argmax(dim=1)
-        PlotPredictions( obs, Xpts, Ypts, pred)
+        traj_cntr +=10
+        PlotPredictions( obs, Xpts, Ypts, pred , traj_cntr)
         # print(pred)
 
 
 
 
-def check_paths(fplist, ob, ob_v , model):
+def check_paths(fplist, ob, ob_v , model , global_trajectory_cntr):
 
     okind = []
     start = time.time()
-    CheckCollisionGNN( fplist  , ob  ,model )
+    CheckCollisionGNN( fplist  , ob  ,model , global_trajectory_cntr)
     end = time.time()
 
     # print( "time" + str(end -start ))
@@ -852,13 +860,13 @@ def check_paths(fplist, ob, ob_v , model):
     return [fplist[i] for i in okind]
 
 
-def frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, ob,ob_v, prev_vec , model):
+def frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, ob,ob_v, prev_vec , model , global_trajectory_cntr):
 
     fplist = calc_frenet_paths(c_speed, c_d, c_d_d, c_d_dd, s0)
     #print(len(fplist))
     fplist = calc_global_paths(fplist, csp,prev_vec)
     #print(len(fplist))
-    fplist = check_paths(fplist, ob, ob_v , model)
+    fplist = check_paths(fplist, ob, ob_v , model , global_trajectory_cntr)
     #print(len(fplist))
     # find minimum cost path
     mincost = float("inf")
@@ -868,7 +876,11 @@ def frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, ob,ob_v, prev_
             mincost = fp.cf
             bestpath = fp
 
-    return bestpath
+    global_trajectory_cntr += len(fplist)
+
+    print(" Total Number of TRAJECTORY  = " + str(global_trajectory_cntr))
+
+    return bestpath , global_trajectory_cntr
 
 
 def generate_target_course(x, y):

@@ -62,6 +62,8 @@ goal_p = np.array([120,0])
 #%========================================%
 #%Simulation details continued
 #%========================================%
+CollidingTraj =0 
+TotalTraj =0 
 
 x_min = np.min(np.hstack((obs_p[:,0],agent_p[0],goal_p[0])))
 x_max = np.max(np.hstack((obs_p[:,0],agent_p[0],goal_p[0])))
@@ -107,8 +109,11 @@ class GCN(torch.nn.Module):
 
         return F.log_softmax(x, dim=1)
 
-model = torch.load('collision_detection_Batch_GNN.pt')
+model = torch.load('collision_detection_Batch_GNN_max.pt')
 model.eval()  
+
+
+global_trajectory_cntr = 0 
 
 
 while np.linalg.norm((agent_p-goal_p)) > 0.2:
@@ -172,7 +177,7 @@ while np.linalg.norm((agent_p-goal_p)) > 0.2:
     ob=np.hstack((xob,yob))
     ob_v=np.hstack((xobdot,yobdot))
 
-    path = frenet_optimal_trajectory.frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, obs_p,obs_v,prev_vec , model)
+    path , global_trajectory_cntr = frenet_optimal_trajectory.frenet_optimal_planning(csp, s0, c_speed, c_d, c_d_d, c_d_dd, obs_p,obs_v,prev_vec , model , global_trajectory_cntr )
 
     s0 = path.s[1]
     c_d = path.d[1]

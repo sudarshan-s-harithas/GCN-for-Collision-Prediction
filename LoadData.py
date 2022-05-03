@@ -108,8 +108,8 @@ def GetBatches(  BatchNum, DataArray , Labels , BatchSize ):
 
 def GetData():
 
-	DataArray = np.loadtxt("CollisionData.txt").reshape(200, 20)
-	Labels = np.loadtxt("Labels.txt").reshape(200, 1)
+	DataArray = np.loadtxt("CollisionData_Max.txt").reshape(200, 20)  #np.loadtxt("CollisionData.txt").reshape(200, 20)
+	Labels = np.loadtxt("Labels_Max.txt").reshape(200, 1)#np.loadtxt("Labels.txt").reshape(200, 1)
 
 	DataIn = []
 
@@ -122,3 +122,63 @@ def GetData():
 		DataIn.append( Batchdata )
 
 	return DataIn
+
+
+
+
+
+def CreateFFEdgeList( numObs, numPtsPerTraj):
+
+	edge_list = []
+
+	total_nodes = numObs+ numPtsPerTraj
+
+	for i in range(numObs):
+
+		for j in range(numObs , numObs+numPtsPerTraj, ):
+
+			edge = [ i,j ]
+			edge_list.append(edge)
+
+
+	for i in range(numPtsPerTraj):
+
+		edge = [ i, total_nodes]
+		edge_list.append(edge)
+
+
+	edge_index = torch.tensor( edge_list ,  dtype=torch.long)
+
+
+	return edge_index
+
+
+
+
+# def GetBatchDataArchB( BatchNum , DataArray , Labels , BatchSize  ):
+
+# 	BatchData = np.zeros( (BatchSize , 20 ) )
+# 	BatchLabel = np.zeros((BatchSize , 1 ) )
+
+
+# def GetDataArchB( numObs, numPtsPerTraj ):
+
+# 	edge_index = CreateFFEdgeList( numObs, numPtsPerTraj)
+
+# 	DataIn = []
+
+# 	DataArray = np.loadtxt("CollisionData_archB.txt").reshape(2000, 20)
+# 	Labels = np.loadtxt("Labels_archB.txt").reshape(2000, 1)
+
+# 	numBatches = 50
+# 	BatchSize = numObs + numPtsPerTraj +1 
+
+# 	for i in range(numBatches):
+
+# 		BatchData = GetBatchDataArchB( i , DataArray , Labels , BatchSize )
+
+
+
+
+
+
