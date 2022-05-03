@@ -177,6 +177,7 @@ def main(args):
         # Train for one epoch
         epoch_loss, lr_now, glob_step = train(train_loader, model_pos, criterion, optimizer, device, args.lr, lr_now,
                                               glob_step, args.lr_decay, args.lr_gamma, max_norm=args.max_norm)
+        print( "Loss at Epoch " + str(epoch) + " =" + str( epoch_loss ) )
 
         # Evaluate
         error_eval_p1, error_eval_p2 = evaluate(valid_loader, model_pos, device)
@@ -199,6 +200,44 @@ def main(args):
     savefig(path.join(ckpt_dir_path, 'log.eps'))
 
     return
+
+
+def GetTransormationPts( All3Dpts, All2DPts):
+
+    a1,b1,c1 = All3Dpts.size()
+    a2,b2,c2 = All2DPts.size()
+
+
+
+    Pts3D = torch.ones( ( (a1*b1) , 4) , dtype=torch.double).type_as(All3Dpts)
+    Pts2D =  torch.ones( (a2*b2 , 3) , dtype=torch.double).type_as(All3Dpts)
+
+    temp = torch.reshape( All3Dpts , ( (a1*b1) , 3)   )
+    temp = temp[0:(a1*b1) , :]
+    Pts3D[:, 0:3] = temp
+
+
+    a,b,c = All2DPts.size()
+
+    temp2 = torch.reshape( All2DPts , (a2*b2 , 2)   )
+    temp = temp2[0:(a2*b2) , :]
+    Pts2D[:, 0:2] = temp
+
+
+    return Pts3D , Pts2D
+
+
+
+def GetProjections( P , outputs_3d):
+
+    Pts = (outputs_3d.T).type_as(outputs_3d)
+    P = torch.tensor(P)
+    P = (P).type_as(outputs_3d) 
+
+    projections = P@Pts 
+
+    return projections
+
 
 
 def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now, step, decay, gamma, max_norm=True):
@@ -224,8 +263,26 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
         targets_3d, inputs_2d = targets_3d.to(device), inputs_2d.to(device)
         outputs_3d = model_pos(inputs_2d)
 
+        P = np.array( [[ 0.36433317, -0.00496474,  0.0179645,  -0.27256447],
+                        [-0.07293952,  0.41734869 , 0.00587739 ,-0.24317693],
+                         [ 0.15458865,  0.00744779  ,0.14326629 , 1 ]])
+
+
+        outputs_3d_reshaped, inputs_2d_reshaped = GetTransormationPts( outputs_3d, inputs_2d)
+
+        Predicted2Pts = GetProjections( P , outputs_3d_reshaped )
+
+        Predicted2Pts = Predicted2Pts.T
+
+
+
         optimizer.zero_grad()
+        loss_2d_pos = criterion(inputs_2d_reshaped, Predicted2Pts)
         loss_3d_pos = criterion(outputs_3d, targets_3d)
+
+        loss_3d_pos += 0.005*loss_2d_pos 
+
+
         loss_3d_pos.backward()
         if max_norm:
             nn.utils.clip_grad_norm_(model_pos.parameters(), max_norm=1)
@@ -237,10 +294,11 @@ def train(data_loader, model_pos, criterion, optimizer, device, lr_init, lr_now,
         batch_time.update(time.time() - end)
         end = time.time()
 
+
         bar.suffix = '({batch}/{size}) Data: {data:.6f}s | Batch: {bt:.3f}s | Total: {ttl:} | ETA: {eta:} ' \
-                     '| Loss: {loss: .4f}' \
+                     '| Loss: {loss: .4f} | Reprojection Loss: {loss_2d_pos: .4f} ' \
             .format(batch=i + 1, size=len(data_loader), data=data_time.avg, bt=batch_time.avg,
-                    ttl=bar.elapsed_td, eta=bar.eta_td, loss=epoch_loss_3d_pos.avg)
+                    ttl=bar.elapsed_td, eta=bar.eta_td, loss=epoch_loss_3d_pos.avg , loss_2d_pos = loss_2d_pos/num_poses )
         bar.next()
 
     bar.finish()

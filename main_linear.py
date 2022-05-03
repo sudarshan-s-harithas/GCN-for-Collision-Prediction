@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
+import FactorGraphOptimizer as FGO
 
 from progress.bar import Bar
 from common.log import Logger, savefig
@@ -172,7 +173,7 @@ def main(args):
         error_eval_p1, error_eval_p2 = evaluate(valid_loader, model_pos, device)
 
         # Update log file
-        logger.append([epoch + 1, lr_now, epoch_loss, epoch_loss2d , error_eval_p1, error_eval_p2])
+        logger.append([epoch + 1, lr_now, epoch_loss , error_eval_p1, error_eval_p2])
 
         # Save checkpoint
         if error_best is None or error_best > error_eval_p1:
@@ -379,6 +380,10 @@ def evaluate(data_loader, model_pos, device):
         inputs_2d = inputs_2d.to(device)
         outputs_3d = model_pos(inputs_2d.view(num_poses, -1)).view(num_poses, -1, 3).cpu()
         outputs_3d = torch.cat([torch.zeros(num_poses, 1, outputs_3d.size(2)), outputs_3d], 1)  # Pad hip joint (0,0,0)
+
+        outputs_3d = FGO.OptimizePoses( outputs_3d.cpu().numpy() , inputs_2d.cpu().numpy() )
+
+        # print(" FGO Optimized values ")
 
         epoch_loss_3d_pos.update(mpjpe(outputs_3d, targets_3d).item() * 1000.0, num_poses)
         epoch_loss_3d_pos_procrustes.update(p_mpjpe(outputs_3d.numpy(), targets_3d.numpy()).item() * 1000.0, num_poses)

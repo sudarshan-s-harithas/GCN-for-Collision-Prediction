@@ -4,7 +4,7 @@ import time
 import argparse
 import numpy as np
 import os.path as path
-import FactorGraphOptimizer as FGO
+
 import torch
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
@@ -69,13 +69,11 @@ def main(args):
     print('==> Preparing data...')
     dataset = read_3d_data(dataset)
 
-
     print('==> Loading 2D detections...')
     keypoints = create_2d_data(path.join('data', 'data_2d_' + args.dataset + '_' + args.keypoints + '.npz'), dataset)
 
     cudnn.benchmark = True
-    device = torch.device('cpu') #torch.device("cuda")
-    map_location=torch.device('cpu')
+    device = torch.device("cuda")
 
     # Create model
     print("==> Creating model...")
@@ -102,7 +100,7 @@ def main(args):
 
     if path.isfile(ckpt_path):
         print("==> Loading checkpoint '{}'".format(ckpt_path))
-        ckpt = torch.load(ckpt_path , map_location)
+        ckpt = torch.load(ckpt_path)
         start_epoch = ckpt['epoch']
         error_best = ckpt['error']
         model_pos.load_state_dict(ckpt['state_dict'] , strict=False)
@@ -127,8 +125,6 @@ def main(args):
                                shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
     prediction = evaluate(render_loader, model_pos, device, args.architecture)[0]
-
-    
 
     # Invert camera transformation
     cam = dataset.cameras()[args.viz_subject][args.viz_camera]
@@ -173,8 +169,6 @@ def evaluate(data_loader, model_pos, device, architecture):
             outputs_3d[:, :, :] -= outputs_3d[:, :1, :]  # Zero-centre the root (hip)
 
         predictions.append(outputs_3d.numpy())
-
-        outputs_3d = FGO.OptimizePoses( outputs_3d.numpy() , inputs_2d.numpy() )
 
         epoch_loss_3d_pos.update(mpjpe(outputs_3d, targets_3d).item() * 1000.0, num_poses)
         epoch_loss_3d_pos_procrustes.update(p_mpjpe(outputs_3d.numpy(), targets_3d.numpy()).item() * 1000.0, num_poses)
