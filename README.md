@@ -41,16 +41,16 @@ pip install -r requirements.txt
 You can find the instructions for setting up the Human3.6M and results of 2D detections in [`data/README.md`](data/README.md). The code for data preparation is borrowed from [VideoPose3D](https://github.com/facebookresearch/VideoPose3D).
 
 ### TO run the visulization  
-
+```
 python viz.py --architecture gcn --non_local --evaluate <CKPT_Path> --viz_subject S11 --viz_action Walking --viz_camera 0 --viz_output output.gif --viz_size 3 --viz_downsample 2 --viz_limit 60
-
+```
 
 ### TO run the Inference
 
-
+```
 python main_gcn.py --evaluate <CKPT_Path>
 
-
+```
  
  
 
