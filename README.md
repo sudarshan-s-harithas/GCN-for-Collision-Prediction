@@ -4,7 +4,7 @@ This work explors the use of a GNN to perform collision prediction of trajectori
 
 
 ### Simulation Results 
-
+Create a folder name **Plots** before the start of the code to save results
 
 The simulation can be run using the following command 
 
