@@ -444,7 +444,7 @@ def PerformNBP(   GMMs ):
                     W_update[j][i] = W_update[j][i] *( GetGaussian( x , mean_star , (inv_var_star) )*   GetGaussian( x , GMMs[j][i] , GMMs[j][3+i] ) )/( GetGaussian( x , mean_temp2 , (inv_sum2) ) )
 
 
-                W_update[j] = W_update[j] / np.sum(W_update[j])
+                W_update[j] = W_update[j] / (np.sum(W_update[j]) +0.00005)
                 L[j] = np.argmax( W_update[j]  )
 
             s_temp = 0 
