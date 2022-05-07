@@ -51,8 +51,10 @@ python viz.py --architecture gcn --non_local --evaluate <CKPT_Path> --viz_subjec
 python main_gcn.py --evaluate <CKPT_Path>
 
 ```
- 
- 
+### To retrain the model from scratch 
+```
+python main_gcn.py --epochs 50
+```
 
 
 
